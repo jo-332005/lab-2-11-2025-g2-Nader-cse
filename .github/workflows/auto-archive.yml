@@ -1,0 +1,48 @@
+name: 🔒 Auto Archive Repository After Deadline
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"     
+  workflow_dispatch:           
+
+jobs:
+  archive-repo:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🕒 Check current date
+        id: get_date
+        run: echo "date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
+      - name: 🔍 Compare with deadline
+        id: check_deadline
+        run: |
+          DEADLINE="2025-11-02T14:30:00Z"
+          NOW=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+
+          echo "🕓 Current UTC time: $NOW"
+          echo "🕛 Deadline UTC time: $DEADLINE"
+
+          if [[ "$NOW" > "$DEADLINE" ]]; then
+            echo "expired=true" >> $GITHUB_OUTPUT
+          else
+            echo "expired=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🔒 Lock all Issues and PRs
+        if: steps.check_deadline.outputs.expired == 'true'
+        uses: dessant/repo-lockdown@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          lock-new-issues: true
+          lock-new-pull-requests: true
+          comment: "🚫 This repository is locked automatically after the deadline."
+
+      - name: 📦 Archive repository
+        if: steps.check_deadline.outputs.expired == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          echo "📦 Archiving repository..."
+          gh api -X PATCH repos/${{ github.repository }} -f archived=true
+          echo "✅ Repository archived successfully!"
